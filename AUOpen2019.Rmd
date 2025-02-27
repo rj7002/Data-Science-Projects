@@ -1,0 +1,336 @@
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(stringr)
+```
+
+```{r}
+events = read.csv('https://raw.githubusercontent.com/josedv82/public_sport_science_datasets/refs/heads/main/Tennis.%20ATP%20Tour%20AU%20Open%202019.%20Tracking%20Data/events.csv')
+```
+
+```{r}
+points = read.csv('https://raw.githubusercontent.com/josedv82/public_sport_science_datasets/refs/heads/main/Tennis.%20ATP%20Tour%20AU%20Open%202019.%20Tracking%20Data/points.csv')
+```
+
+```{r}
+rallies = read.csv('https://raw.githubusercontent.com/josedv82/public_sport_science_datasets/refs/heads/main/Tennis.%20ATP%20Tour%20AU%20Open%202019.%20Tracking%20Data/rallies.csv')
+```
+
+```{r}
+serves = read.csv('https://raw.githubusercontent.com/josedv82/public_sport_science_datasets/refs/heads/main/Tennis.%20ATP%20Tour%20AU%20Open%202019.%20Tracking%20Data/serves.csv')
+```
+
+```{r}
+out_bounds <- data.frame(
+    x = c(0, 0, 23.77, 23.77, 0),
+    y = c(0, 10.97, 10.97, 0, 0)
+)
+
+t_lines <- data.frame(
+    x = c(5.585, 5.585, 5.585, 18.385, 18.385, 18.385),
+    y = c(1.37, 9.6, 5.485, 5.485, 1.37, 9.6)
+)
+
+court <- ggplot() +
+    geom_path(data = out_bounds, aes(x = x, y = y)) +
+    geom_path(data = t_lines, aes(x = x, y = y)) +
+    geom_path(aes(x = c(23.77, 0), y = c(1.37, 1.37))) + # lower singles lines
+    geom_path(aes(x = c(23.77, 0), y = c(9.6, 9.6))) + # upper singles lines
+    geom_path(aes(x = c(11.985, 11.985), y = c(0, 10.97)), lty = 2) + # net line
+    ylim(c(-1, 11.97)) + xlim(c(-4, 27.77)) + 
+    theme_void()
+
+court
+```
+
+```{r}
+isOutOfBounds = function (x,y) {
+  if (is.na(x) || is.na(y)) {
+    return(F)  
+  }
+  if (x < 0 || x > 23.77) {
+    return(T)
+  }
+  if (y < 0 || y > 10.97) {
+    return(T)
+  }
+  return(F)
+}
+events$HOutOfBounds <- mapply(isOutOfBounds, events$hitter_x, events$hitter_y)
+events$ROutOfBounds <- mapply(isOutOfBounds, events$receiver_x, events$receiver_y)
+
+```
+
+```{r}
+movement = events %>%
+  group_by(receiver, rallyid) %>%
+  arrange(rallyid, strokeid) %>%  # Assuming 'timestamp' column exists for ordering points in time
+  mutate(
+    # Calculate the difference in x and y coordinates between consecutive points
+    delta_x = c(NA, diff(receiver_x)),
+    delta_y = c(NA, diff(receiver_y)),
+    # Apply the Euclidean distance formula
+    distance = sqrt(delta_x^2 + delta_y^2)
+  ) %>%
+  # Calculate total distance moved for each rally
+  summarise(total_distance_moved = sum(distance, na.rm = TRUE)) %>% filter(total_distance_moved > 0)
+movement
+```
+
+```{r}
+movement2 = events %>%
+  group_by(hitter, rallyid) %>%
+  arrange(rallyid, strokeid) %>%  # Assuming 'timestamp' column exists for ordering points in time
+  mutate(
+    # Calculate the difference in x and y coordinates between consecutive points
+    delta_x = c(NA, diff(receiver_x)),
+    delta_y = c(NA, diff(receiver_y)),
+    # Apply the Euclidean distance formula
+    distance = sqrt(delta_x^2 + delta_y^2)
+  ) %>%
+  # Calculate total distance moved for each rally
+  summarise(total_distance_moved = sum(distance, na.rm = TRUE)) %>% filter(total_distance_moved > 0)
+movement2
+```
+
+```{r}
+library(plotly)
+```
+
+```{r}
+ggplotly(ggplot(filter(movement,receiver!='__undefined__'),aes(x=rallyid,y=total_distance_moved,color=receiver)) + geom_line(linewidth=1,alpha=0.4))
+```
+
+```{r}
+movement %>% group_by(receiver) %>% summarise(avgDistMoved = mean(total_distance_moved,na.rm=T))
+```
+
+```{r}
+head(events)
+```
+
+```{r}
+head(points)
+```
+
+```{r}
+head(rallies)
+```
+
+```{r}
+head(serves)
+```
+
+```{r}
+colnames(events)
+```
+
+```{r}
+events %>% arrange(desc(HitSpeed))
+```
+
+```{r}
+unique(events$type)
+```
+
+```{r}
+plot_data = events %>% group_by(rallyid) %>% summarise(strokes = n(),serves = sum(type == 'serve',na.rm=T),slice = sum(type=='slice',na.rm=T),topspin = sum(type=='topspin',na.rm=T),return=sum(type=='return',na.rm=T),volley=sum(type=='volley',na.rm=T),stop = sum(type=='stop',na.rm=T),smash=sum(type=='smash',na.rm=T),lob = sum(type == 'lob',na.rm=T)) %>% arrange(desc(strokes)) %>% head(20)
+```
+
+```{r}
+plot_data <- plot_data %>%
+  pivot_longer(cols = c(serves, slice, topspin, return, volley, stop, smash, lob),
+               names_to = "shot_type",
+               values_to = "count")
+
+# Plot
+ggplotly(ggplot(plot_data, aes(x = factor(rallyid), y = count, fill = shot_type)) +
+  geom_bar(stat = 'identity', position = 'stack') +
+  theme_minimal() +
+  labs(
+    title = "Distribution of Shot Types for 20 Longest Rallies",
+    x = "Rally ID",
+    y = "Shot Count",
+    fill = "Shot Type"
+  ) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)))  # Rotate x labels for better readability
+```
+
+```{r}
+events %>% group_by(hitter) %>% summarise(HitterOOBPerc= round((sum(HOutOfBounds == T)/n()),2))
+```
+
+```{r}
+events %>% group_by(hitter) %>% summarise(RecieverOOBPerc= round((sum(ROutOfBounds == T)/n()),2))
+```
+
+```{r}
+events %>% group_by(rallyid) %>% summarise(ballDist = sum(distance,na.rm=T),strokes = n()) %>% arrange(desc(ballDist)) %>% head(5)
+```
+
+```{r}
+ggplot(events %>% group_by(rallyid) %>% summarise(ballDist = sum(distance,na.rm=T)),aes(x=rallyid,y=ballDist)) + geom_smooth()
+```
+
+```{r}
+count(events,events$HOutOfBounds)
+```
+
+```{r}
+count(events,events$ROutOfBounds)
+```
+
+```{r}
+table(events$HOutOfBounds,events$ROutOfBounds)
+```
+
+```{r}
+ggplot(events %>% group_by(hitter,type) %>% summarise(avgTime = mean(time,na.rm=T)),aes(x=type,y=avgTime)) + geom_bar(stat = "identity",aes(fill = hitter))
+```
+
+```{r}
+ggplot(events,aes(x=HitDistFromNet)) + geom_histogram(aes(fill=hitter),color='black')
+```
+
+```{r}
+ggplot(events,aes(x=ReceiveDistFromNet)) + geom_histogram(aes(fill=receiver),color='black')
+
+```
+
+```{r}
+ggplot(events,aes(x=time)) + geom_histogram(aes(color=hitter))
+```
+
+```{r}
+events$distance = sqrt((events$hitter_x-events$receiver_x)^2 + (events$hitter_y-events$receiver_y)^2)
+```
+
+```{r}
+events$HitDistFromNet = (abs(events$hitter_x-11.985))
+events$ReceiveDistFromNet = (abs(events$receiver_x-11.985))
+```
+
+```{r}
+ggplot(events,aes(x=HitDistFromNet,y=ReceiveDistFromNet)) + geom_point(aes(color=time))
+```
+
+```{r}
+ggplot() + geom_point(data=events,aes(x=time,y=HitDistFromNet,color=factor(type)))
+```
+
+```{r}
+ggplot(events %>% group_by(type) %>% summarise(avgHitDistFromNet = mean(HitDistFromNet,na.rm=T),avgReceiverDistFromNet = mean(ReceiveDistFromNet,na.rm=T))) + geom_bar(stat = 'identity',aes(x=type,y=avgHitDistFromNet,fill=type)) + ylab('Hitter Average Distance From Net')
+```
+
+```{r}
+ggplot(events %>% group_by(type) %>% summarise(avgHitDistFromNet = mean(HitDistFromNet,na.rm=T),avgReceiverDistFromNet = mean(ReceiveDistFromNet,na.rm=T))) + geom_bar(stat = 'identity',aes(x=type,y=avgReceiverDistFromNet,fill=type)) + ylab('Receiver Average Distance From Net')
+```
+
+```{r}
+ggplot(events %>% group_by(type) %>% summarise(avgDist = mean(distance,na.rm=T)),aes(x=type,y=avgDist)) + geom_bar(stat='identity',color='green')
+```
+
+```{r}
+head(points)
+```
+
+```{r}
+ggplot(points,aes(x=strokes)) + geom_boxplot()
+```
+
+```{r}
+head(rallies)
+```
+
+```{r}
+rallies %>% group_by(winner) %>% summarise(avgStrokes = mean(strokes,na.rm=T),avgTime = mean(totaltime,na.rm=T))
+```
+
+```{r}
+ggplot(rallies,aes(x=strokes,y=totaltime)) + geom_point()
+```
+
+```{r}
+points %>% group_by(reason) %>% summarise(avgStrokes = mean(strokes,na.rm=T),avgTime = mean(totaltime,na.rm=T))
+```
+
+```{r}
+ggplot(events %>% group_by(rallyid) %>% summarise(avg_dist = mean(distance)),aes(x=rallyid,y=avg_dist)) + geom_bar(stat='identity') + geom_smooth(method = "loess", aes(x = rallyid, y = avg_dist), color = "red", size = 1, se = FALSE) + ggtitle('Average Distance From Each Other')
+```
+
+```{r}
+ggplot(events %>% group_by(stroke) %>% summarise(avgDist = mean(distance,na.rm=T)),aes(x=stroke,y=avgDist)) + geom_bar(stat='identity',color='blue')
+```
+
+```{r}
+events <- events %>% 
+    rename(hitter_x = hitter_y,
+           hitter_y = hitter_x,
+           receiver_x = receiver_y,
+           receiver_y = receiver_x)
+
+points <- points %>% 
+    rename(x = y,
+           y = x)
+
+serves <- serves %>% 
+    rename(y = x,
+           x = y)
+
+rallies <- rallies %>% 
+    rename(y = x,
+           x = y)
+
+```
+
+```{r}
+court <- ggplot() +
+    geom_path(data = out_bounds, aes(x = x, y = y), colour = "white", size = 1.5, lineend = "square") +
+    geom_path(data = t_lines, aes(x = x, y = y), colour = "white", size = 1.5, lineend = "square") +
+    geom_path(aes(x = c(23.77, 0), y = c(1.37, 1.37)), colour = "white", size = 1.5, lineend = "square") + # lower singles lines
+    geom_path(aes(x = c(23.77, 0), y = c(9.6, 9.6)), colour = "white", size = 1.5, lineend = "square") + # upper singles lines
+    geom_path(aes(x = c(11.985, 11.985), y = c(0, 10.97)), lty = 1, colour = "white", size = 1.5, lineend = "square") + # net line
+    ylim(c(-1, 11.97)) + xlim(c(-4, 27.77)) + 
+    theme_void() +
+    theme(
+        plot.background = element_rect("#5080B0")
+    )
+```
+
+```{r}
+court +
+    geom_point(data = rallies, aes(x = x, y = y,color=winner)) +
+    theme(legend.position = "bottom",
+          plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Rally Positions")
+```
+
+```{r}
+court +
+    geom_point(data = events, aes(x = hitter_x, y = hitter_y,color=factor(type))) +
+    theme(legend.position = "bottom",
+          plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Rally Positions") + 
+    theme_void() +
+    theme(
+        plot.background = element_rect("#5080B0")
+    )
+```
+
+```{r}
+court + geom_density2d_filled(data=events,aes(x=hitter_x,y=hitter_y),alpha=0.4) + ggtitle('Heatmap of Hitter Locations')
+```
+
+```{r}
+court + geom_density2d_filled(data=events,aes(x=receiver_x,y=receiver_y),alpha=0.4) + ggtitle('Heatmap of Reciever Locations')
+```
+
+```{r}
+court + geom_point(data=events, aes(x=hitter_x,y=hitter_y,color=type),alpha=0.2) + geom_point(data=events, aes(x=receiver_x,y=receiver_y,color=type),alpha=0.2) + geom_segment(data=events,aes(x=hitter_x,y=hitter_y,xend=receiver_x,yend=receiver_y,color=type),alpha=0.2)
+```
+
+```{r}
+court + geom_point(data=events, aes(x=hitter_x,y=hitter_y,color=HOutOfBounds)) + geom_point(data=events, aes(x=receiver_x,y=receiver_y,color=ROutOfBounds,shape=type))
+```
