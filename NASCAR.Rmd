@@ -1,0 +1,130 @@
+---
+title: "NASCAR Analysis"
+output: html_notebook
+---
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+```
+
+
+```{r}
+df = read.csv("~/Downloads/nascar_driver_statistics.csv")
+```
+
+```{r}
+head(df)
+```
+
+
+```{r}
+str(df)
+```
+```{r}
+colnames(df)
+```
+
+```{r}
+ggplot(df,aes(x=AvgPos,y=DriverRating)) + geom_point(aes(color=factor(Year)))
+```
+
+```{r}
+ggplot(df,aes(x=AvgFinish,y=DriverRating)) + geom_point(aes(color=factor(Year)))
+```
+
+```{r}
+ggplot(df,aes(x=QualityPasses)) + geom_histogram(color='black')
+```
+```{r}
+ggplotly(ggplot(df %>% group_by(Year) %>% summarise(avgRating = mean(DriverRating)) %>% arrange(Year),aes(x=Year,y=avgRating)) + geom_line(linewidth=1))
+```
+```{r}
+count(df,df$Year)
+```
+
+```{r}
+ggplot(df,aes(x=DriverRating)) + geom_histogram(color='black')
+```
+```{r}
+df %>% filter(DriverRating == max(df$DriverRating)) %>% select(Driver,DriverRating,Year)
+```
+```{r}
+df %>% filter(DriverRating == min(df$DriverRating)) %>% select(Driver,DriverRating,Year)
+```
+```{r}
+count(df,df$Driver) %>% arrange(desc(n))
+```
+```{r}
+ggplot(df %>% group_by(Driver) %>% summarise(TotWins = sum(Wins)) %>% arrange(desc(TotWins)) %>% head(10), aes(x=Driver,y=TotWins)) + geom_bar(stat = 'identity',aes(fill=Driver))
+```
+
+```{r}
+library(corrplot)
+```
+
+```{r}
+numeric_df <- df[, sapply(df, is.numeric)]
+corr = cor(numeric_df)
+```
+
+```{r}
+corrplot(corr, method = 'color')
+```
+
+```{r}
+library(corrgram)
+```
+
+```{r}
+corrgram(numeric_df, order=TRUE,
+         lower.panel=panel.shade, upper.panel=panel.pie,
+         diag.panel=panel.minmax, text.panel=panel.txt)
+```
+```{r}
+X = select(df,-DriverRating,-Driver)
+```
+
+```{r}
+y = df['DriverRating']
+```
+
+```{r}
+split = caTools::sample.split(y$DriverRating,SplitRatio = 0.7)
+```
+
+```{r}
+train = subset(numeric_df, split == T)
+test = subset(numeric_df, split == F)
+```
+
+```{r}
+model = lm(DriverRating ~ .,data=train)
+```
+
+```{r}
+preds = predict(model,test)
+```
+
+```{r}
+results = data.frame(cbind(preds, actual = test$DriverRating))
+```
+
+
+```{r}
+head(results)
+```
+
+```{r}
+results$residual = results$actual-results$preds
+```
+
+```{r}
+ggplot() + geom_point(data = results,aes(x=actual,y=residual)) + geom_hline(yintercept = 0,color='red')
+```
+
+```{r}
+ggplot(results,aes(x=actual,y=preds)) + geom_point(aes(color=residual)) + geom_line(aes(x=actual,y=actual),color='red')
+```
